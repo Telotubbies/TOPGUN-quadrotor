@@ -1,4 +1,4 @@
-%% TESA_Train_Evo_fromBase.m
+%% TESA_Manual_Simulation.m (For Manual Gain Testing and Trajectory Plotting)
 clc; clear; close all;
 
 %% ===============================
@@ -50,116 +50,45 @@ assignin('base','inputStructure',inputStructure);
 %% ===============================
 %  CONTROLLER BASE GAINS
 % ===============================
-Kp_base = diag([1.5, 1.5, 1.0]);    
-Kv_base = diag([2.0, 2.0, 2.0]);    
-Kr_base = diag([8.0, 8.0, 10.0]);   
+Kp_base = diag([107.5, 107.5, 107.0]);    
+Kv_base = diag([107.0, 107.0, 107.0]);    
+Kr_base = diag([102.0, 12.0, 5.0]);   
 Kw_base = diag([0.8, 0.8, 1.2]);    
 
 %% ===============================
-%  EVO "TRAINING" PARAMETERS
+%  MANUAL GAIN SCALES (USER INPUT)
+%  คุณสามารถเปลี่ยนค่าในบรรทัดถัดไปเพื่อทดสอบ Gain ใหม่ได้เลย
 % ===============================
-popSize = 40;     % จำนวน candidate ต่อรุ่น
-gens    = 30;     % จำนวนรุ่น (epoch)
-eliteK  = 6;      % เก็บตัวดีที่สุดไว้กี่ตัว
-sigma   = 0.25;   % mutation strength (log-space)
+%Scale for Kp | Scale for Kv | Scale for Kr | Scale for Kw
+s = [0.1000 0.4468 0.1000 0.1000]; 
+%*********************************************************
 
-% init population in log-space
-pop = log([ ...
-    0.05 + 0.95*rand(popSize,1), ...
-    0.05 + 0.95*rand(popSize,1), ...
-    0.05 + 0.95*rand(popSize,1), ...
-    0.05 + 0.95*rand(popSize,1) ...
-]);
+s1 = s(1);
+s2 = s(2);
+s3 = s(3);
+s4 = s(4);
 
-bestHist = zeros(gens,1);
-bestScaleHist = zeros(gens,4);
+Kp_test = s1*Kp_base;
+Kv_test = s2*Kv_base;
+Kr_test = s3*Kr_base;
+Kw_test = s4*Kw_base;
 
-disp("=== Start Evolution Training ===");
+disp("=== Starting Manual Simulation ===");
+fprintf("Testing Scales: [Kp=%.4f, Kv=%.4f, Kr=%.4f, Kw=%.4f]\n", s1, s2, s3, s4);
 
-for gen = 1:gens
-    errs = zeros(popSize,1);
+%% ===============================
+%  SIMULATION AND PLOTTING
+% ===============================
 
-    for i = 1:popSize
-        s = exp(pop(i,:));  % scales
+assignin('base','Kp',Kp_test);
+assignin('base','Kv',Kv_test);
+assignin('base','Kr',Kr_test);
+assignin('base','Kw',Kw_test);
 
-        Kp = s(1)*Kp_base;
-        Kv = s(2)*Kv_base;
-        Kr = s(3)*Kr_base;
-        Kw = s(4)*Kw_base;
-
-        assignin('base','Kp',Kp);
-        assignin('base','Kv',Kv);
-        assignin('base','Kr',Kr);
-        assignin('base','Kw',Kw);
-
-        try
-            out = sim('quadrotorsmodel2.slx');
-            Xe = out.yout{1}.Values.Data(:,1)';
-            Ye = out.yout{1}.Values.Data(:,2)';
-            Ze = out.yout{1}.Values.Data(:,3)';
-
-            Len = min(numel(X), numel(Xe));
-            e3d = sqrt((X(1:Len)-Xe(1:Len)).^2 + ...
-                       (Y(1:Len)-Ye(1:Len)).^2 + ...
-                       (Z(1:Len)-Ze(1:Len)).^2);
-
-            errs(i) = mean(e3d);
-            if any(~isfinite(e3d)), errs(i)=1e6; end
-
-        catch
-            errs(i) = 1e6;
-        end
-    end
-
-    % sort (min error best)
-    [errs,idx] = sort(errs);
-    pop = pop(idx,:);
-
-    bestHist(gen) = errs(1);
-    bestScaleHist(gen,:) = exp(pop(1,:));
-
-    fprintf("Gen %02d | best err=%.4f | scales=[%.3f %.3f %.3f %.3f]\n", ...
-        gen, errs(1), bestScaleHist(gen,1),bestScaleHist(gen,2),bestScaleHist(gen,3),bestScaleHist(gen,4));
-
-    % elitism
-    elite = pop(1:eliteK,:);
-
-    % mutate to make next gen
-    newPop = elite;
-    while size(newPop,1) < popSize
-        parent = elite(randi(eliteK),:);
-        child  = parent + sigma*randn(1,4);
-        newPop = [newPop; child];
-    end
-    pop = newPop(1:popSize,:);
-end
-
-% best scales after training
-best_scales = exp(pop(1,:));
-best_err    = bestHist(end);
-
-disp("===== TRAINING DONE =====");
-disp(best_scales);
-disp(best_err);
-
-% plot training curve
-figure;
-plot(bestHist,'LineWidth',1.5); grid on;
-xlabel('Generation'); ylabel('Best Mean 3D Error (m)');
-title('Evolution Training Curve');
-
-% simulate best and plot
-Kp_best = best_scales(1)*Kp_base;
-Kv_best = best_scales(2)*Kv_base;
-Kr_best = best_scales(3)*Kr_base;
-Kw_best = best_scales(4)*Kw_base;
-
-assignin('base','Kp',Kp_best);
-assignin('base','Kv',Kv_best);
-assignin('base','Kr',Kr_best);
-assignin('base','Kw',Kw_best);
-
+% Run Simulation
 out = sim('quadrotorsmodel2.slx');
+
+% Extract Results
 Xe = out.yout{1}.Values.Data(:,1)';
 Ye = out.yout{1}.Values.Data(:,2)';
 Ze = out.yout{1}.Values.Data(:,3)';
@@ -167,11 +96,18 @@ Ze = out.yout{1}.Values.Data(:,3)';
 Len = min(numel(X), numel(Xe));
 Xe = Xe(1:Len); Ye = Ye(1:Len); Ze = Ze(1:Len);
 
+% Calculate Final Error (Optional: เพื่อให้รู้ว่า Error ที่ได้คือเท่าไหร่)
+e3d = sqrt((X(1:Len)-Xe(1:Len)).^2 + (Y(1:Len)-Ye(1:Len)).^2 + (Z(1:Len)-Ze(1:Len)).^2);
+mean_error = mean(e3d);
+fprintf("Mean 3D Position Error: %.4f meters\n", mean_error);
+disp("================================");
+
+% Plot Trajectory Comparison
 figure;
 plot3(X, Y, Z, 'k--', 'LineWidth', 1.5); hold on;
 plot3(Xe, Ye, Ze, 'LineWidth', 1.5);
 set(gca,'ZDir','reverse'); grid on; axis equal;
-xlabel('x'); ylabel('y'); zlabel('-z');
-legend('Reference','Best (Evo)','Location','best');
-title('Reference vs Best (Evolution Training)');
-
+xlabel('x (m)'); ylabel('y (m)'); zlabel('-z (m)');
+legend('Reference Trajectory','Actual Drone Path (Manual Gain)','Location','best');
+title(sprintf('Reference vs Actual Trajectory (Manual Test, Error: %.2f m)', mean_error));
+saveas(gcf, 'Manual_Trajectory_Comparison.png');
